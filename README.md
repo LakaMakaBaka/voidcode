@@ -1,6 +1,8 @@
-[![Python](https://img.shields.io/badge/python-3.14-blue)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
-[![CI](https://github.com/lei-jia-xing/voidcode/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/lei-jia-xing/voidcode/actions/workflows/ci.yml)
+<p align="center">
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" />
+  </a>
+</p>
 
 # VoidCode
 
