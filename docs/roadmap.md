@@ -1,6 +1,6 @@
 # VoidCode Roadmap Summary
 
-For the execution-focused checklist that turns this roadmap into concrete delivery phases, see [`docs/mvp-todo-plan.md`](./mvp-todo-plan.md).
+For the execution-focused checklist that turns this roadmap into concrete delivery phases, see [`docs/mvp-todo-plan.md`](./mvp-todo-plan.md). For client-facing runtime contracts, see [`docs/contracts/README.md`](./contracts/README.md).
 
 ## Current status
 

@@ -9,6 +9,8 @@ VoidCode is a pre-MVP, local-first coding agent runtime inspired by OpenCode and
 3. the runtime records state and events
 4. the user can observe progress and continue the session through a client such as the CLI
 
+For the normative client-facing contract layer, see [`docs/contracts/README.md`](./contracts/README.md).
+
 ## System context
 
 The system context can be described as a layered path from users to tools:

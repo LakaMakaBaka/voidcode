@@ -2,7 +2,7 @@
 
 This document provides a truthful snapshot of the VoidCode repository as of April 2026. VoidCode is currently in the **pre-MVP foundation stage with one real deterministic backend slice**.
 
-For the concrete delivery checklist that connects the current repo state to the intended MVP, see [`docs/mvp-todo-plan.md`](./mvp-todo-plan.md).
+For the concrete delivery checklist that connects the current repo state to the intended MVP, see [`docs/mvp-todo-plan.md`](./mvp-todo-plan.md). For normative client-facing contracts, see [`docs/contracts/README.md`](./contracts/README.md).
 
 ## Overview
 The repository contains two primary, independent components:
@@ -26,7 +26,7 @@ The repository contains two primary, independent components:
 ### Planned / In-Progress
 - [ ] **LangGraph Orchestration**: Full graph compilation, richer node routing, and interrupt/resume behavior.
 - [ ] **Runtime Services**: Session lifecycle, richer permission checkpoints, hooks, and persistence.
-- [ ] **Tool Registry**: Dynamic tool discovery and registration beyond the current in-memory read-only default.
+- [ ] **Tool Registry**: Dynamic tool discovery and registration beyond the current in-memory read-only default. Today the only real built-in tool path is the read-only file read flow.
 - [ ] **API Layer**: FastAPI/Starlette-based server to expose the runtime to clients.
 
 ---
@@ -44,6 +44,10 @@ The repository contains two primary, independent components:
 - [ ] **WebSocket Streaming**: Real-time agent event streaming from the backend.
 - [ ] **Session Persistence**: True persistence via the backend database.
 - [ ] **File System Browser**: Integration with the local workspace for code reading.
+
+### Planning status
+- [x] **Foundation / Epic 0**: Developer tooling, repository structure, CI baseline, and contributor-facing docs are substantially in place.
+- [ ] **Executable contract layer for clients**: The contract docs now exist under `docs/contracts/`, but implementation work against them is still pending.
 
 ---
 

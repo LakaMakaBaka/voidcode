@@ -10,6 +10,8 @@ VoidCode is a local-first coding agent runtime inspired by OpenCode and Claude C
 
 > **Status:** VoidCode is pre-MVP software in early development. The repository currently focuses on establishing the runtime foundations, architecture boundaries, and developer workflow needed for the first end-to-end agent loop.
 
+> **Current truth-source split:** `docs/current-state.md` describes what exists now, `docs/roadmap.md` describes high-level phases, `docs/mvp-todo-plan.md` describes the execution checklist, and `docs/contracts/` defines client-facing runtime contracts.
+
 ## What VoidCode is aiming to build
 
 VoidCode is designed to provide a local development-agent experience centered on:
@@ -56,10 +58,10 @@ mise run frontend:dev
 
 ## Architecture summary
 
-VoidCode follows a layered architecture where **LangGraph handles agent orchestration** and a **custom runtime handles product-level concerns**.
+VoidCode follows a layered architecture where **LangGraph is intended to handle agent orchestration** and a **custom runtime handles product-level concerns**.
 
 - The runtime is the system boundary for sessions, permissions, hooks, storage, streaming, and tool governance.
-- LangGraph is used as the orchestration engine for graph state, routing, checkpoints, and interrupt/resume flow.
+- LangGraph is the planned orchestration engine for graph state, routing, checkpoints, and interrupt/resume flow; today the repo only includes a deterministic read-only slice.
 - Clients such as the CLI, a future web frontend, or future IDE integrations talk to the runtime rather than calling tools directly.
 - The codebase is organized around three core areas:
   - `src/voidcode/runtime/` for runtime services and execution boundaries
@@ -80,6 +82,7 @@ For the English-facing architecture and roadmap summaries, see:
 - [`docs/architecture.md`](./docs/architecture.md)
 - [`docs/roadmap.md`](./docs/roadmap.md)
 - [`docs/mvp-todo-plan.md`](./docs/mvp-todo-plan.md)
+- [`docs/contracts/README.md`](./docs/contracts/README.md)
 - [`docs/development.md`](./docs/development.md)
 
 The original planning sources remain in Chinese:
