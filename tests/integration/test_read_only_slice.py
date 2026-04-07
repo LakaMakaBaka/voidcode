@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import shlex
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -68,6 +70,14 @@ class RuntimeRunner(Protocol):
     def run(self, request: RuntimeRequestLike) -> RuntimeResponseLike: ...
 
     def run_stream(self, request: RuntimeRequestLike) -> Iterator[StreamChunkLike]: ...
+
+    def resume_stream(
+        self,
+        session_id: str,
+        *,
+        approval_request_id: str | None = None,
+        approval_decision: str | None = None,
+    ) -> Iterator[StreamChunkLike]: ...
 
     def list_sessions(self) -> tuple[StoredSessionSummaryLike, ...]: ...
 
@@ -185,6 +195,64 @@ def _approval_runtime(
 
 def _multi_step_prompt() -> str:
     return "read source.txt\nwrite copied.txt copied marker\ngrep copied copied.txt"
+
+
+def _cli_test_env() -> dict[str, str]:
+    env = os.environ.copy()
+    src_path = str(Path(__file__).resolve().parents[2] / "src")
+    existing_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        src_path if not existing_pythonpath else f"{src_path}{os.pathsep}{existing_pythonpath}"
+    )
+    return env
+
+
+def _normalize_terminal_text(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _run_cli_in_tty(
+    *,
+    workspace: Path,
+    request: str,
+    session_id: str,
+    approval_input: str,
+) -> subprocess.CompletedProcess[str]:
+    script = shutil.which("script")
+    if script is None:
+        pytest.skip("requires script for TTY-backed CLI integration")
+    probe = subprocess.run(
+        [script, "-qefc", "printf ''", "/dev/null"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        pytest.skip("requires script with -qefc support for TTY-backed CLI integration")
+
+    command = shlex.join(
+        [
+            sys.executable,
+            "-m",
+            "voidcode",
+            "run",
+            request,
+            "--workspace",
+            str(workspace),
+            "--session-id",
+            session_id,
+            "--approval-mode",
+            "ask",
+        ]
+    )
+    return subprocess.run(
+        ["script", "-qefc", command, "/dev/null"],
+        input=f"{approval_input}\n",
+        capture_output=True,
+        text=True,
+        check=False,
+        env=_cli_test_env(),
+    )
 
 
 def test_runtime_allows_non_read_only_tool_when_policy_is_allow(tmp_path: Path) -> None:
@@ -1181,6 +1249,99 @@ def test_cli_run_command_prints_events_and_file_contents(tmp_path: Path) -> None
     assert "slice proof" in result.stdout
 
 
+def test_cli_run_command_approval_allow_writes_file_under_tty_and_replays_session(
+    tmp_path: Path,
+) -> None:
+    session_id = "tty-approval-allow-session"
+    result = _run_cli_in_tty(
+        workspace=tmp_path,
+        request="write approved.txt approved via tty",
+        session_id=session_id,
+        approval_input="y",
+    )
+
+    transcript = _normalize_terminal_text(result.stdout + result.stderr)
+    written_file = tmp_path / "approved.txt"
+    resume_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "voidcode",
+            "sessions",
+            "resume",
+            session_id,
+            "--workspace",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=_cli_test_env(),
+    )
+
+    assert result.returncode == 0
+    assert "Approve write_file for write_file approved.txt? [y/N]:" in transcript
+    assert "EVENT runtime.approval_requested" in transcript
+    assert "EVENT runtime.approval_resolved" in transcript
+    assert "decision=allow" in transcript
+    assert "EVENT runtime.tool_completed" in transcript
+    assert "RESULT" in transcript
+    assert "approved via tty" in transcript
+    assert written_file.read_text(encoding="utf-8") == "approved via tty"
+
+    assert resume_result.returncode == 0
+    assert "EVENT runtime.approval_requested" in resume_result.stdout
+    assert "EVENT runtime.approval_resolved" in resume_result.stdout
+    assert "approved via tty" in resume_result.stdout
+
+
+def test_cli_run_command_approval_deny_blocks_write_under_tty_and_replays_failure(
+    tmp_path: Path,
+) -> None:
+    session_id = "tty-approval-deny-session"
+    result = _run_cli_in_tty(
+        workspace=tmp_path,
+        request="write denied.txt denied via tty",
+        session_id=session_id,
+        approval_input="n",
+    )
+
+    transcript = _normalize_terminal_text(result.stdout + result.stderr)
+    denied_file = tmp_path / "denied.txt"
+    resume_result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "voidcode",
+            "sessions",
+            "resume",
+            session_id,
+            "--workspace",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=_cli_test_env(),
+    )
+
+    assert result.returncode == 0
+    assert "Approve write_file for write_file denied.txt? [y/N]:" in transcript
+    assert "EVENT runtime.approval_requested" in transcript
+    assert "EVENT runtime.approval_resolved" in transcript
+    assert "decision=deny" in transcript
+    assert "EVENT runtime.failed" in transcript
+    assert "permission denied for tool: write_file" in transcript
+    assert "RESULT" in transcript
+    assert denied_file.exists() is False
+
+    assert resume_result.returncode == 0
+    assert "EVENT runtime.approval_requested" in resume_result.stdout
+    assert "EVENT runtime.approval_resolved" in resume_result.stdout
+    assert "EVENT runtime.failed" in resume_result.stdout
+    assert "permission denied for tool: write_file" in resume_result.stdout
+
+
 def test_runtime_persists_and_resumes_session_across_instances(tmp_path: Path) -> None:
     sample_file = tmp_path / "sample.txt"
     _ = sample_file.write_text("persisted slice\n", encoding="utf-8")
@@ -1362,6 +1523,174 @@ def test_runtime_stream_emits_failed_terminal_chunk_before_tool_error(tmp_path: 
     assert failed_chunk.event.event_type == "runtime.failed"
     assert failed_chunk.event.payload == {"error": "boom from tool"}
     assert failed_chunk.session.status == "failed"
+
+
+def test_runtime_resume_stream_yields_incrementally_before_resumed_tool_completion(
+    tmp_path: Path,
+) -> None:
+    runtime_request, runtime = _approval_runtime(tmp_path, mode="ask")
+
+    waiting = runtime.run(
+        runtime_request(prompt="write delayed.txt resumed later", session_id="resume-stream")
+    )
+    approval_request_id = cast(str, waiting.events[-1].payload["request_id"])
+
+    write_file_module = importlib.import_module("voidcode.tools.write_file")
+    write_tool = cast(ReadFileToolType, write_file_module.WriteFileTool)
+    original_invoke = write_tool.invoke
+    tool_started = threading.Event()
+    allow_tool_completion = threading.Event()
+    first_chunk_ready = threading.Event()
+    second_chunk_ready = threading.Event()
+    first_chunk: list[StreamChunkLike] = []
+    second_chunk: list[StreamChunkLike] = []
+
+    def _blocking_invoke(self: object, _call: object, *, workspace: Path) -> object:
+        tool_started.set()
+        _ = allow_tool_completion.wait(timeout=2)
+        return original_invoke(self, _call, workspace=workspace)
+
+    with patch.object(write_tool, "invoke", autospec=True, side_effect=_blocking_invoke):
+        resumed_runtime_request, resumed_runtime = _approval_runtime(tmp_path, mode="ask")
+        _ = resumed_runtime_request
+        stream = resumed_runtime.resume_stream(
+            "resume-stream",
+            approval_request_id=approval_request_id,
+            approval_decision="allow",
+        )
+
+        def _consume_first_chunk() -> None:
+            first_chunk.append(next(stream))
+            first_chunk_ready.set()
+
+        first_worker = threading.Thread(target=_consume_first_chunk)
+        first_worker.start()
+        first_worker.join(timeout=1)
+
+        assert first_worker.is_alive() is False
+        assert first_chunk_ready.is_set() is True
+        assert tool_started.is_set() is False
+        assert [chunk.event.event_type for chunk in first_chunk if chunk.event is not None] == [
+            "runtime.approval_resolved"
+        ]
+        assert all(chunk.session.status == "running" for chunk in first_chunk)
+
+        def _consume_second_chunk() -> None:
+            second_chunk.append(next(stream))
+            second_chunk_ready.set()
+
+        second_worker = threading.Thread(target=_consume_second_chunk)
+        second_worker.start()
+
+        assert tool_started.wait(timeout=0.2) is True
+        time.sleep(0.05)
+        assert second_chunk_ready.is_set() is False
+
+        started = time.monotonic()
+        allow_tool_completion.set()
+        second_worker.join(timeout=1)
+        remaining_chunks = list(stream)
+        elapsed = time.monotonic() - started
+
+        assert second_worker.is_alive() is False
+        assert elapsed < 1
+        assert [chunk.event.event_type for chunk in second_chunk if chunk.event is not None] == [
+            "runtime.tool_completed"
+        ]
+        assert all(chunk.session.status == "running" for chunk in second_chunk)
+        assert [
+            chunk.event.event_type for chunk in remaining_chunks if chunk.event is not None
+        ] == ["graph.loop_step", "graph.response_ready"]
+        assert [chunk.output for chunk in remaining_chunks if chunk.kind == "output"] == [
+            "resumed later"
+        ]
+        assert all(chunk.session.status == "completed" for chunk in remaining_chunks)
+
+
+def test_runtime_resume_stream_reconstructs_replayed_chunk_statuses(tmp_path: Path) -> None:
+    sample_file = tmp_path / "sample.txt"
+    _ = sample_file.write_text("replay proof\n", encoding="utf-8")
+    runtime_request, runtime_class = _load_runtime_types()
+
+    completed_runtime = runtime_class(workspace=tmp_path)
+    _ = completed_runtime.run(
+        runtime_request(prompt="read sample.txt", session_id="completed-stream")
+    )
+    completed_chunks = list(completed_runtime.resume_stream("completed-stream"))
+
+    assert [chunk.event.event_type for chunk in completed_chunks if chunk.event is not None] == [
+        "runtime.request_received",
+        "runtime.skills_loaded",
+        "graph.loop_step",
+        "graph.model_turn",
+        "graph.tool_request_created",
+        "runtime.tool_lookup_succeeded",
+        "runtime.permission_resolved",
+        "runtime.tool_completed",
+        "graph.loop_step",
+        "graph.response_ready",
+    ]
+    assert [chunk.session.status for chunk in completed_chunks[:8]] == [
+        "running",
+        "running",
+        "running",
+        "running",
+        "running",
+        "running",
+        "running",
+        "running",
+    ]
+    assert [chunk.session.status for chunk in completed_chunks[8:]] == [
+        "completed",
+        "completed",
+        "completed",
+    ]
+
+    approval_runtime_request, approval_runtime = _approval_runtime(tmp_path, mode="ask")
+    waiting = approval_runtime.run(
+        approval_runtime_request(
+            prompt="write waiting.txt pending replay", session_id="waiting-stream"
+        )
+    )
+    waiting_chunks = list(approval_runtime.resume_stream("waiting-stream"))
+
+    assert [chunk.event.event_type for chunk in waiting_chunks if chunk.event is not None] == [
+        "runtime.request_received",
+        "runtime.skills_loaded",
+        "graph.loop_step",
+        "graph.model_turn",
+        "graph.tool_request_created",
+        "runtime.tool_lookup_succeeded",
+        "runtime.approval_requested",
+    ]
+    assert [chunk.session.status for chunk in waiting_chunks[:-1]] == [
+        "running",
+        "running",
+        "running",
+        "running",
+        "running",
+        "running",
+    ]
+    assert waiting_chunks[-1].session.status == "waiting"
+
+    approval_request_id = cast(str, waiting.events[-1].payload["request_id"])
+    _ = approval_runtime.resume(
+        "waiting-stream",
+        approval_request_id=approval_request_id,
+        approval_decision="deny",
+    )
+    failed_chunks = list(approval_runtime.resume_stream("waiting-stream"))
+
+    assert [chunk.event.event_type for chunk in failed_chunks[-3:] if chunk.event is not None] == [
+        "runtime.approval_requested",
+        "runtime.approval_resolved",
+        "runtime.failed",
+    ]
+    assert [chunk.session.status for chunk in failed_chunks[-3:]] == [
+        "waiting",
+        "running",
+        "failed",
+    ]
 
 
 def test_cli_lists_and_resumes_persisted_session(tmp_path: Path) -> None:
