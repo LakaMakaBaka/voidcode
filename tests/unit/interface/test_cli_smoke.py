@@ -15,6 +15,8 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from .._paths import with_src_pythonpath
+
 
 @dataclass(frozen=True)
 class _StubEvent:
@@ -147,13 +149,20 @@ def _configure_resume_stream(runtime: Any, *streams: Iterable[_StubChunk]) -> No
     runtime.resume_stream = MagicMock(side_effect=[iter(stream) for stream in streams])
 
 
-def test_python_module_help_works() -> None:
-    result = subprocess.run(
-        [sys.executable, "-m", "voidcode", "--help"],
+def _run_module_cli(
+    *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "voidcode", *args],
         capture_output=True,
         text=True,
         check=False,
+        env=with_src_pythonpath(env),
     )
+
+
+def test_python_module_help_works() -> None:
+    result = _run_module_cli("--help")
 
     assert result.returncode == 0
     assert "usage:" in result.stdout.lower()
@@ -172,20 +181,12 @@ def test_console_script_help_works() -> None:
 
 
 def test_sessions_resume_rejects_partial_approval_flags() -> None:
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "voidcode",
-            "sessions",
-            "resume",
-            "demo-session",
-            "--approval-decision",
-            "allow",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
+    result = _run_module_cli(
+        "sessions",
+        "resume",
+        "demo-session",
+        "--approval-decision",
+        "allow",
     )
 
     assert result.returncode == 2
@@ -196,45 +197,28 @@ def test_sessions_resume_surfaces_approval_resolution_errors_cleanly() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         workspace = Path(tmp)
         _ = (workspace / "sample.txt").write_text("sample\n", encoding="utf-8")
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
+        env = with_src_pythonpath(os.environ.copy())
 
-        setup_result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "voidcode",
-                "run",
-                "read sample.txt",
-                "--workspace",
-                str(workspace),
-                "--session-id",
-                "demo-session",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+        setup_result = _run_module_cli(
+            "run",
+            "read sample.txt",
+            "--workspace",
+            str(workspace),
+            "--session-id",
+            "demo-session",
             env=env,
         )
 
-        resume_result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "voidcode",
-                "sessions",
-                "resume",
-                "demo-session",
-                "--workspace",
-                str(workspace),
-                "--approval-request-id",
-                "wrong",
-                "--approval-decision",
-                "allow",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+        resume_result = _run_module_cli(
+            "sessions",
+            "resume",
+            "demo-session",
+            "--workspace",
+            str(workspace),
+            "--approval-request-id",
+            "wrong",
+            "--approval-decision",
+            "allow",
             env=env,
         )
 
@@ -791,24 +775,15 @@ def test_run_command_uses_repo_local_config_to_allow_write_request() -> None:
             json.dumps({"approval_mode": "allow"}),
             encoding="utf-8",
         )
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
+        env = with_src_pythonpath(os.environ.copy())
 
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "voidcode",
-                "run",
-                "write danger.txt config approved",
-                "--workspace",
-                str(workspace),
-                "--session-id",
-                "config-run-session",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+        result = _run_module_cli(
+            "run",
+            "write danger.txt config approved",
+            "--workspace",
+            str(workspace),
+            "--session-id",
+            "config-run-session",
             env=env,
         )
 
@@ -827,22 +802,13 @@ def test_config_show_outputs_workspace_effective_config() -> None:
             json.dumps({"approval_mode": "deny", "model": "repo/model"}),
             encoding="utf-8",
         )
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
+        env = with_src_pythonpath(os.environ.copy())
 
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "voidcode",
-                "config",
-                "show",
-                "--workspace",
-                str(workspace),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+        result = _run_module_cli(
+            "config",
+            "show",
+            "--workspace",
+            str(workspace),
             env=env,
         )
 
@@ -865,43 +831,26 @@ def test_config_show_outputs_resumed_session_effective_config() -> None:
             encoding="utf-8",
         )
         (workspace / "sample.txt").write_text("session config\n", encoding="utf-8")
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
+        env = with_src_pythonpath(os.environ.copy())
 
-        setup = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "voidcode",
-                "run",
-                "read sample.txt",
-                "--workspace",
-                str(workspace),
-                "--session-id",
-                "config-session",
-                "--approval-mode",
-                "allow",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+        setup = _run_module_cli(
+            "run",
+            "read sample.txt",
+            "--workspace",
+            str(workspace),
+            "--session-id",
+            "config-session",
+            "--approval-mode",
+            "allow",
             env=env,
         )
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "voidcode",
-                "config",
-                "show",
-                "--workspace",
-                str(workspace),
-                "--session",
-                "config-session",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+        result = _run_module_cli(
+            "config",
+            "show",
+            "--workspace",
+            str(workspace),
+            "--session",
+            "config-session",
             env=env,
         )
 
@@ -962,19 +911,11 @@ def test_config_show_delegates_to_runtime_effective_config(capsys: Any) -> None:
 
 
 def test_config_show_invalid_workspace_returns_error() -> None:
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "voidcode",
-            "config",
-            "show",
-            "--workspace",
-            "/definitely/missing/workspace",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
+    result = _run_module_cli(
+        "config",
+        "show",
+        "--workspace",
+        "/definitely/missing/workspace",
     )
 
     assert result.returncode != 0
@@ -985,24 +926,15 @@ def test_config_show_invalid_workspace_returns_error() -> None:
 def test_config_show_missing_session_returns_error() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         workspace = Path(tmp)
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
+        env = with_src_pythonpath(os.environ.copy())
 
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "voidcode",
-                "config",
-                "show",
-                "--workspace",
-                str(workspace),
-                "--session",
-                "missing-session",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+        result = _run_module_cli(
+            "config",
+            "show",
+            "--workspace",
+            str(workspace),
+            "--session",
+            "missing-session",
             env=env,
         )
 
@@ -1016,41 +948,24 @@ def test_config_show_session_workspace_mismatch_returns_error() -> None:
         workspace_a = Path(tmp_a)
         workspace_b = Path(tmp_b)
         (workspace_a / "sample.txt").write_text("session config\n", encoding="utf-8")
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
+        env = with_src_pythonpath(os.environ.copy())
 
-        setup = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "voidcode",
-                "run",
-                "read sample.txt",
-                "--workspace",
-                str(workspace_a),
-                "--session-id",
-                "config-session",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+        setup = _run_module_cli(
+            "run",
+            "read sample.txt",
+            "--workspace",
+            str(workspace_a),
+            "--session-id",
+            "config-session",
             env=env,
         )
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "voidcode",
-                "config",
-                "show",
-                "--workspace",
-                str(workspace_b),
-                "--session",
-                "config-session",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+        result = _run_module_cli(
+            "config",
+            "show",
+            "--workspace",
+            str(workspace_b),
+            "--session",
+            "config-session",
             env=env,
         )
 
