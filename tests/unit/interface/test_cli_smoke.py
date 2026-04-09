@@ -197,7 +197,7 @@ def test_sessions_resume_surfaces_approval_resolution_errors_cleanly() -> None:
         workspace = Path(tmp)
         _ = (workspace / "sample.txt").write_text("sample\n", encoding="utf-8")
         env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
 
         setup_result = subprocess.run(
             [
@@ -792,7 +792,7 @@ def test_run_command_uses_repo_local_config_to_allow_write_request() -> None:
             encoding="utf-8",
         )
         env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
 
         result = subprocess.run(
             [
@@ -828,7 +828,7 @@ def test_config_show_outputs_workspace_effective_config() -> None:
             encoding="utf-8",
         )
         env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
 
         result = subprocess.run(
             [
@@ -866,7 +866,7 @@ def test_config_show_outputs_resumed_session_effective_config() -> None:
         )
         (workspace / "sample.txt").write_text("session config\n", encoding="utf-8")
         env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
 
         setup = subprocess.run(
             [
@@ -986,7 +986,7 @@ def test_config_show_missing_session_returns_error() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         workspace = Path(tmp)
         env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
 
         result = subprocess.run(
             [
@@ -1017,7 +1017,7 @@ def test_config_show_session_workspace_mismatch_returns_error() -> None:
         workspace_b = Path(tmp_b)
         (workspace_a / "sample.txt").write_text("session config\n", encoding="utf-8")
         env = os.environ.copy()
-        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[3] / "src")
 
         setup = subprocess.run(
             [
