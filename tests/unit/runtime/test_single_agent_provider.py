@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 
 from voidcode.runtime.model_provider import ModelProviderRegistry, resolve_provider_model
 from voidcode.runtime.single_agent_provider import (

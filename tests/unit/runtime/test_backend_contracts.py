@@ -8,7 +8,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, get_type_hints
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 
 import pytest
 

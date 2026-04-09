@@ -5,7 +5,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 
 from voidcode.runtime.config import RuntimeLspConfig
 
