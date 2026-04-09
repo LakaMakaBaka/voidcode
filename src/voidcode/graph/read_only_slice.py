@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-# pyright: reportMissingTypeStubs=false, reportUnknownMemberType=false
+# pyright: reportMissingTypeStubs=false
 import re
 from dataclasses import dataclass
-from typing import cast
+from typing import Protocol, cast
 
 from langgraph.graph import END, START, StateGraph
 
@@ -22,6 +22,25 @@ RUN_REQUEST_PATTERN = re.compile(r"^run\s+(?P<command>.+)$", re.IGNORECASE)
 WRITE_REQUEST_PATTERN = re.compile(r"^write\s+(?P<path>\S+)\s+(?P<content>.+)$", re.IGNORECASE)
 
 
+class _CompiledGraphApp(Protocol):
+    def invoke(self, state: GraphLoopState) -> object: ...
+
+
+class _StateGraphBuilder(Protocol):
+    def add_node(self, node: str, action: object) -> object: ...
+
+    def add_edge(self, start_key: str, end_key: str) -> object: ...
+
+    def add_conditional_edges(
+        self,
+        source: str,
+        path: object,
+        path_map: dict[str, str],
+    ) -> object: ...
+
+    def compile(self) -> _CompiledGraphApp: ...
+
+
 @dataclass(frozen=True, slots=True)
 class DeterministicReadOnlyStep:
     events: tuple[GraphEvent, ...] = ()
@@ -35,7 +54,7 @@ class DeterministicReadOnlyGraph:
         if max_steps < 1:
             raise ValueError("max_steps must be at least 1")
         self._max_steps = max_steps
-        workflow = StateGraph(GraphLoopState)
+        workflow = cast(_StateGraphBuilder, StateGraph(GraphLoopState))
         workflow.add_node("plan_turn", self._plan_turn_node)
         workflow.add_node("finalize_turn", self._finalize_turn_node)
         workflow.add_edge(START, "plan_turn")
@@ -45,7 +64,7 @@ class DeterministicReadOnlyGraph:
             {"tool": END, "finalize": "finalize_turn", "error": END},
         )
         workflow.add_edge("finalize_turn", END)
-        self._app = workflow.compile()
+        self._app: _CompiledGraphApp = workflow.compile()
 
     def step(
         self,
