@@ -1613,6 +1613,7 @@ def test_runtime_single_agent_compaction_emits_memory_refresh_and_persists_metad
         "compaction_reason": None,
         "original_tool_result_count": 0,
         "retained_tool_result_count": 0,
+        "max_tool_result_count": 4,
     }
 
 
