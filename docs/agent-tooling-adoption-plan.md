@@ -17,6 +17,18 @@ Voidcode already has solid text-based edit machinery in `src/voidcode/tools/edit
 2. A closed edit loop that re-reads files after formatting
 3. A doctor/check capability that verifies external tools are available
 
+This plan also records one strategic constraint that should guide future capability work: **MCP remains useful, but it should not be the default way to introduce core agent behavior.** For `voidcode`, the preferred order is:
+
+1. **Native runtime-managed tool** for local, frequent, product-defining behavior
+2. **Skill + CLI/native tool composition** for reusable workflows and optional higher-level behaviors
+3. **MCP** only for external, separately owned, auth-heavy, or user-pluggable integrations
+
+That means MCP is not treated as dead, but it is deliberately de-emphasized as the default substrate. In practice:
+
+- file/search/edit/refactor/build/test/git flows should prefer native tools or CLI-backed skills
+- Context7-like or Exa-like capabilities can remain useful as optional external context providers
+- runtime-managed MCP should stay config-gated and boundary-first unless a real extension ecosystem justifies deeper investment
+
 ---
 
 ## Why `docs/plans/`
