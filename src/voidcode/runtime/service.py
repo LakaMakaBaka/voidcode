@@ -2031,7 +2031,10 @@ class VoidCodeRuntime:
             )
             if running_task.status != "running":
                 return
-            if running_task.cancel_requested_at is not None:
+            dispatch_task = self.load_background_task(task_id)
+            if dispatch_task.status != "running":
+                return
+            if dispatch_task.cancel_requested_at is not None:
                 self._session_store.mark_background_task_terminal(
                     workspace=self._workspace,
                     task_id=task_id,
@@ -2041,10 +2044,10 @@ class VoidCodeRuntime:
                 return
             response = self.run(
                 RuntimeRequest(
-                    prompt=running_task.request.prompt,
+                    prompt=dispatch_task.request.prompt,
                     session_id=session_id,
                     metadata={
-                        **running_task.request.metadata,
+                        **dispatch_task.request.metadata,
                         "background_task_id": task_id,
                         "background_run": True,
                     },

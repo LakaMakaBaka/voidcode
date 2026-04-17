@@ -511,6 +511,42 @@ def test_runtime_background_task_worker_exits_when_task_is_cancelled_before_star
     run_mock.assert_not_called()
 
 
+def test_runtime_background_task_worker_rechecks_cancel_before_dispatch(tmp_path: Path) -> None:
+    runtime = VoidCodeRuntime(workspace=tmp_path, graph=_BackgroundTaskSuccessGraph())
+    runtime._background_tasks_reconciled = True  # pyright: ignore[reportPrivateUsage]
+    store = _private_attr(runtime, "_session_store")
+    task_module = importlib.import_module("voidcode.runtime.task")
+    store.create_background_task(
+        workspace=tmp_path,
+        task=task_module.BackgroundTaskState(
+            task=task_module.BackgroundTaskRef(id="task-dispatch-cancel"),
+            request=task_module.BackgroundTaskRequestSnapshot(prompt="background hello"),
+            created_at=1,
+            updated_at=1,
+        ),
+    )
+
+    original_mark_running = store.mark_background_task_running
+
+    def _cancel_after_mark_running(
+        *, workspace: Path, task_id: str, session_id: str
+    ) -> BackgroundTaskState:
+        running = original_mark_running(workspace=workspace, task_id=task_id, session_id=session_id)
+        _ = store.request_background_task_cancel(workspace=workspace, task_id=task_id)
+        return running
+
+    store.mark_background_task_running = _cancel_after_mark_running
+    run_mock = Mock(side_effect=AssertionError("runtime.run must not be called"))
+    runtime.run = run_mock
+
+    runtime._run_background_task_worker("task-dispatch-cancel")  # pyright: ignore[reportPrivateUsage]
+
+    final_task = runtime.load_background_task("task-dispatch-cancel")
+    assert final_task.status == "cancelled"
+    assert final_task.error == "cancelled before dispatch"
+    run_mock.assert_not_called()
+
+
 def test_runtime_initializes_extension_state_from_config_when_enabled(tmp_path: Path) -> None:
     skill_dir = tmp_path / ".voidcode" / "skills" / "demo"
     skill_dir.mkdir(parents=True)
