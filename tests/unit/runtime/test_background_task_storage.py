@@ -114,6 +114,47 @@ def test_background_task_storage_cancel_semantics(tmp_path: Path) -> None:
     assert cancelled.error == "cancelled before start"
 
 
+def test_background_task_storage_queued_cancel_race_does_not_overwrite_running_task(
+    tmp_path: Path,
+) -> None:
+    store = SqliteSessionStore()
+    store.create_background_task(workspace=tmp_path, task=_task(task_id="task-c-race"))
+    running = store.mark_background_task_running(
+        workspace=tmp_path,
+        task_id="task-c-race",
+        session_id="session-c-race",
+    )
+    original_load_background_task = store.load_background_task
+    stale_reads_remaining = 1
+
+    def _stale_queued_load(*, workspace: Path, task_id: str) -> BackgroundTaskState:
+        nonlocal stale_reads_remaining
+        if stale_reads_remaining > 0:
+            stale_reads_remaining -= 1
+            return BackgroundTaskState(
+                task=BackgroundTaskRef(id=task_id),
+                status="queued",
+                request=BackgroundTaskRequestSnapshot(prompt="read sample.txt"),
+                created_at=1,
+                updated_at=1,
+            )
+        return original_load_background_task(workspace=workspace, task_id=task_id)
+
+    store.load_background_task = _stale_queued_load
+
+    cancelled = store.request_background_task_cancel(
+        workspace=tmp_path,
+        task_id="task-c-race",
+    )
+
+    assert running.status == "running"
+    assert cancelled.status == "running"
+    assert cancelled.cancel_requested_at is not None
+    assert cancelled.finished_at is None
+    assert cancelled.session_id == "session-c-race"
+    assert cancelled.error is None
+
+
 def test_background_task_storage_running_cancel_records_request(tmp_path: Path) -> None:
     store = SqliteSessionStore()
     store.create_background_task(workspace=tmp_path, task=_task(task_id="task-d"))

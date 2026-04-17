@@ -694,12 +694,26 @@ class SqliteSessionStore:
         task_id = validate_background_task_id(task_id)
         current = self.load_background_task(workspace=workspace, task_id=task_id)
         if current.status == "queued":
-            return self.mark_background_task_terminal(
-                workspace=workspace,
-                task_id=task_id,
-                status="cancelled",
-                error="cancelled before start",
-            )
+            with self._connect(workspace) as connection:
+                updated_at = self._next_background_task_timestamp(connection=connection)
+                cancelled = connection.execute(
+                    """
+                    UPDATE background_tasks
+                    SET status = 'cancelled', error = ?, finished_at = ?, updated_at = ?
+                    WHERE workspace = ? AND task_id = ? AND status = 'queued'
+                    """,
+                    (
+                        "cancelled before start",
+                        updated_at,
+                        updated_at,
+                        str(workspace),
+                        task_id,
+                    ),
+                ).rowcount
+                connection.commit()
+            if cancelled == 1:
+                return self.load_background_task(workspace=workspace, task_id=task_id)
+            current = self.load_background_task(workspace=workspace, task_id=task_id)
         if current.status in ("completed", "failed", "cancelled"):
             return current
         with self._connect(workspace) as connection:
