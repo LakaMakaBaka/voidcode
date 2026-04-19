@@ -61,6 +61,12 @@ class RuntimeTransportApp:
     def __init__(self, *, runtime_factory: Callable[[], RuntimeTransport]) -> None:
         self._runtime_factory = runtime_factory
 
+    @staticmethod
+    def _close_runtime(runtime: RuntimeTransport) -> None:
+        exit_method = getattr(runtime, "__exit__", None)
+        if callable(exit_method):
+            exit_method(None, None, None)
+
     async def __call__(
         self,
         scope: dict[str, object],
@@ -244,17 +250,27 @@ class RuntimeTransportApp:
                 logger.exception("unexpected transport streaming failure")
             await send({"type": "http.response.body", "body": b"", "more_body": False})
             return
+        finally:
+            self._close_runtime(runtime)
 
         await send({"type": "http.response.body", "body": b"", "more_body": False})
 
     async def _handle_list_sessions(self, send: Send) -> None:
         runtime = self._runtime_factory()
-        payload = [self._serialize_stored_session_summary(item) for item in runtime.list_sessions()]
+        try:
+            payload = [
+                self._serialize_stored_session_summary(item) for item in runtime.list_sessions()
+            ]
+        finally:
+            self._close_runtime(runtime)
         await self._json_response(send, status=200, payload=payload)
 
     async def _handle_list_notifications(self, send: Send) -> None:
         runtime = self._runtime_factory()
-        payload = [self._serialize_notification(item) for item in runtime.list_notifications()]
+        try:
+            payload = [self._serialize_notification(item) for item in runtime.list_notifications()]
+        finally:
+            self._close_runtime(runtime)
         await self._json_response(send, status=200, payload=payload)
 
     async def _handle_resume(self, *, session_id: str, send: Send) -> None:
@@ -264,6 +280,8 @@ class RuntimeTransportApp:
         except ValueError as exc:
             await self._json_response(send, status=404, payload={"error": str(exc)})
             return
+        finally:
+            self._close_runtime(runtime)
         await self._json_response(
             send,
             status=200,
@@ -277,6 +295,8 @@ class RuntimeTransportApp:
         except ValueError as exc:
             await self._json_response(send, status=404, payload={"error": str(exc)})
             return
+        finally:
+            self._close_runtime(runtime)
         await self._json_response(
             send,
             status=200,
@@ -307,6 +327,8 @@ class RuntimeTransportApp:
         except ValueError as exc:
             await self._json_response(send, status=404, payload={"error": str(exc)})
             return
+        finally:
+            self._close_runtime(runtime)
         await self._json_response(
             send,
             status=200,
@@ -325,6 +347,8 @@ class RuntimeTransportApp:
         except ValueError as exc:
             await self._json_response(send, status=404, payload={"error": str(exc)})
             return
+        finally:
+            self._close_runtime(runtime)
         await self._json_response(
             send,
             status=200,

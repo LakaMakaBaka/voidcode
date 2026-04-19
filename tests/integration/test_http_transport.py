@@ -389,6 +389,44 @@ def test_transport_handles_lifespan_startup_and_shutdown(tmp_path: Path) -> None
     ]
 
 
+def test_transport_closes_request_scoped_runtime_after_list_sessions(tmp_path: Path) -> None:
+    create_runtime_app = _load_transport_app_factory()
+    closed: list[str] = []
+
+    class StubRuntime:
+        def run_stream(self, request: RuntimeRequestLike) -> Iterator[StreamChunkLike]:
+            raise AssertionError(f"run_stream should not be called: {request}")
+
+        def list_sessions(self) -> tuple[StoredSessionSummaryLike, ...]:
+            return ()
+
+        def session_result(self, *, session_id: str) -> object:
+            raise AssertionError(f"session_result should not be called: {session_id}")
+
+        def list_notifications(self) -> tuple[object, ...]:
+            raise AssertionError("list_notifications should not be called")
+
+        def acknowledge_notification(self, *, notification_id: str) -> object:
+            raise AssertionError(
+                f"acknowledge_notification should not be called: {notification_id}"
+            )
+
+        def resume(self, session_id: str, **_: object) -> RuntimeResponseLike:
+            raise AssertionError(f"resume should not be called: {session_id}")
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            _ = exc_type, exc, tb
+            closed.append("closed")
+
+    app = create_runtime_app(workspace=tmp_path, runtime_factory=lambda: StubRuntime())
+
+    response = _run_app(app, method="GET", path="/api/sessions")
+
+    assert response.status == 200
+    assert response.json() == []
+    assert closed == ["closed"]
+
+
 def test_transport_rejects_other_unsupported_scope_types(tmp_path: Path) -> None:
     create_runtime_app = _load_transport_app_factory()
     app = create_runtime_app(workspace=tmp_path)
@@ -1457,7 +1495,7 @@ def test_transport_serializes_structured_provider_failure_payloads() -> None:
         body=json.dumps({"prompt": "fail provider"}).encode("utf-8"),
     )
     payloads = _parse_sse_payloads(response)
-    first_payload = cast(dict[str, object], payloads[0])
+    first_payload = payloads[0]
     first_event = cast(dict[str, object], first_payload["event"])
 
     assert response.status == 200

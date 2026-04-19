@@ -150,6 +150,9 @@ class VoidCodeTUI(App[int]):
 
         self.query_one("#composer-input", Input).focus()
 
+    def on_unmount(self) -> None:
+        self.runtime.__exit__(None, None, None)
+
     def action_command_palette(self) -> None:
         self.push_screen(CommandPalette(), self._handle_command)
 

@@ -234,6 +234,25 @@ async def test_tui_sidebar_updates_on_mount(app_class: Any) -> None:
 
 
 @pytest.mark.anyio
+async def test_tui_closes_runtime_on_unmount(app_class: Any) -> None:
+    VoidCodeTUI, _, _ = app_class
+
+    with patch(
+        "voidcode.tui.app.load_runtime_config",
+        autospec=True,
+        return_value=_mock_runtime_config(),
+    ):
+        with patch("voidcode.tui.app.VoidCodeRuntime", autospec=True) as runtime_class:
+            runtime = runtime_class.return_value
+            app = VoidCodeTUI(workspace=Path("."))
+
+            async with app.run_test() as pilot:
+                await pilot.pause()
+
+            runtime.__exit__.assert_called_once_with(None, None, None)
+
+
+@pytest.mark.anyio
 async def test_tui_command_palette_new_session(app_class: Any) -> None:
     VoidCodeTUI, _, _ = app_class
 

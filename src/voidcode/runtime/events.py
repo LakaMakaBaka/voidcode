@@ -14,6 +14,8 @@ type ExistingEventType = Literal[
     "runtime.acp_disconnected",
     "runtime.acp_failed",
     "runtime.lsp_server_started",
+    "runtime.lsp_server_reused",
+    "runtime.lsp_server_startup_rejected",
     "runtime.lsp_server_stopped",
     "runtime.lsp_server_failed",
     "runtime.mcp_server_started",
@@ -51,6 +53,10 @@ RUNTIME_ACP_CONNECTED: Final[ExistingEventType] = "runtime.acp_connected"
 RUNTIME_ACP_DISCONNECTED: Final[ExistingEventType] = "runtime.acp_disconnected"
 RUNTIME_ACP_FAILED: Final[ExistingEventType] = "runtime.acp_failed"
 RUNTIME_LSP_SERVER_STARTED: Final[ExistingEventType] = "runtime.lsp_server_started"
+RUNTIME_LSP_SERVER_REUSED: Final[ExistingEventType] = "runtime.lsp_server_reused"
+RUNTIME_LSP_SERVER_STARTUP_REJECTED: Final[ExistingEventType] = (
+    "runtime.lsp_server_startup_rejected"
+)
 RUNTIME_LSP_SERVER_STOPPED: Final[ExistingEventType] = "runtime.lsp_server_stopped"
 RUNTIME_LSP_SERVER_FAILED: Final[ExistingEventType] = "runtime.lsp_server_failed"
 RUNTIME_MCP_SERVER_STARTED: Final[ExistingEventType] = "runtime.mcp_server_started"
@@ -92,6 +98,8 @@ EMITTED_EVENT_TYPES: Final[tuple[ExistingEventType, ...]] = (
     RUNTIME_ACP_DISCONNECTED,
     RUNTIME_ACP_FAILED,
     RUNTIME_LSP_SERVER_STARTED,
+    RUNTIME_LSP_SERVER_REUSED,
+    RUNTIME_LSP_SERVER_STARTUP_REJECTED,
     RUNTIME_LSP_SERVER_STOPPED,
     RUNTIME_LSP_SERVER_FAILED,
     RUNTIME_MCP_SERVER_STARTED,
