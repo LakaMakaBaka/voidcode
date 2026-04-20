@@ -370,6 +370,24 @@ def _write_demo_skill(skill_dir: Path, *, description: str = "Demo skill", conte
     )
 
 
+def _expected_demo_skill_payload(
+    skill_dir: Path,
+    *,
+    description: str = "Demo skill",
+    content: str,
+) -> dict[str, str]:
+    return {
+        "name": "demo",
+        "description": description,
+        "content": content,
+        "prompt_context": (
+            f"Skill: demo\nDescription: {description}\nInstructions:\n{content}"
+        ),
+        "execution_notes": content,
+        "source_path": str((skill_dir / "SKILL.md").resolve()),
+    }
+
+
 def test_runtime_initializes_empty_extension_state_by_default(tmp_path: Path) -> None:
     previous_copilot_token = os.environ.get("GITHUB_COPILOT_TOKEN")
     os.environ["GITHUB_COPILOT_TOKEN"] = "runtime-copilot-token"
@@ -1653,22 +1671,36 @@ def test_runtime_emits_skills_applied_and_persists_frozen_skill_payloads(tmp_pat
         "runtime.skills_loaded",
         "runtime.skills_applied",
     ]
-    assert response.events[2].payload == {"skills": ["demo"], "count": 1}
+    assert response.events[2].payload == {
+        "skills": ["demo"],
+        "count": 1,
+        "prompt_context_built": True,
+        "prompt_context_length": len(
+            "Runtime-managed skills are active for this turn. "
+            "Apply these instructions in addition to the user's request.\n\n"
+            "Skill: demo\nDescription: Demo skill\n"
+            "Instructions:\n# Demo\nAlways explain your reasoning."
+        ),
+    }
     assert response.session.metadata["applied_skills"] == ["demo"]
     assert response.session.metadata["applied_skill_payloads"] == [
-        {
-            "name": "demo",
-            "description": "Demo skill",
-            "content": "# Demo\nAlways explain your reasoning.",
-        }
+        _expected_demo_skill_payload(
+            skill_dir,
+            content="# Demo\nAlways explain your reasoning.",
+        )
     ]
     assert _SkillCapturingStubGraph.last_request is not None
     assert _SkillCapturingStubGraph.last_request.applied_skills == (
-        {
-            "name": "demo",
-            "description": "Demo skill",
-            "content": "# Demo\nAlways explain your reasoning.",
-        },
+        _expected_demo_skill_payload(
+            skill_dir,
+            content="# Demo\nAlways explain your reasoning.",
+        ),
+    )
+    assert _SkillCapturingStubGraph.last_request.skill_prompt_context.startswith(
+        "Runtime-managed skills are active"
+    )
+    assert "Always explain your reasoning." in (
+        _SkillCapturingStubGraph.last_request.skill_prompt_context
     )
 
 
@@ -1689,6 +1721,48 @@ def test_runtime_persists_explicit_empty_applied_skill_snapshot(tmp_path: Path) 
     assert response.session.metadata["applied_skill_payloads"] == []
     assert _SkillCapturingStubGraph.last_request is not None
     assert _SkillCapturingStubGraph.last_request.applied_skills == ()
+
+
+def test_runtime_applies_only_requested_skills_from_request_metadata(tmp_path: Path) -> None:
+    alpha_dir = tmp_path / ".voidcode" / "skills" / "alpha"
+    beta_dir = tmp_path / ".voidcode" / "skills" / "beta"
+    alpha_dir.mkdir(parents=True)
+    beta_dir.mkdir(parents=True)
+    (alpha_dir / "SKILL.md").write_text(
+        "---\nname: alpha\ndescription: Alpha skill\n---\n# Alpha\nUse alpha.\n",
+        encoding="utf-8",
+    )
+    (beta_dir / "SKILL.md").write_text(
+        "---\nname: beta\ndescription: Beta skill\n---\n# Beta\nUse beta.\n",
+        encoding="utf-8",
+    )
+    runtime = VoidCodeRuntime(
+        workspace=tmp_path,
+        graph=_SkillCapturingStubGraph(),
+        config=RuntimeConfig(skills=RuntimeSkillsConfig(enabled=True)),
+    )
+
+    response = runtime.run(RuntimeRequest(prompt="hello", metadata={"skills": ["beta"]}))
+
+    assert response.session.metadata["applied_skills"] == ["beta"]
+    assert response.events[2].payload["skills"] == ["beta"]
+    assert _SkillCapturingStubGraph.last_request is not None
+    assert [skill["name"] for skill in _SkillCapturingStubGraph.last_request.applied_skills] == [
+        "beta"
+    ]
+    assert "Skill: beta" in _SkillCapturingStubGraph.last_request.skill_prompt_context
+    assert "Skill: alpha" not in _SkillCapturingStubGraph.last_request.skill_prompt_context
+
+
+def test_runtime_rejects_unknown_requested_skill(tmp_path: Path) -> None:
+    runtime = VoidCodeRuntime(
+        workspace=tmp_path,
+        graph=_SkillCapturingStubGraph(),
+        config=RuntimeConfig(skills=RuntimeSkillsConfig(enabled=True)),
+    )
+
+    with pytest.raises(ValueError, match="unknown skill: missing"):
+        _ = runtime.run(RuntimeRequest(prompt="hello", metadata={"skills": ["missing"]}))
 
 
 def test_runtime_skill_payloads_affect_execution_output_when_graph_consumes_them(
@@ -1713,12 +1787,13 @@ def test_runtime_skill_payloads_affect_execution_output_when_graph_consumes_them
     )
     assert _SkillAwareStubGraph.last_request is not None
     assert _SkillAwareStubGraph.last_request.applied_skills == (
-        {
-            "name": "demo",
-            "description": "Demo skill",
-            "content": "# Demo\nUse concise bullet points.",
-        },
+        _expected_demo_skill_payload(
+            skill_dir,
+            content="# Demo\nUse concise bullet points.",
+        ),
     )
+    assert "Use concise bullet points." in _SkillAwareStubGraph.last_request.skill_prompt_context
+    assert "Do something else." not in _SkillAwareStubGraph.last_request.skill_prompt_context
 
 
 def test_runtime_resume_reuses_frozen_skill_payloads_for_execution_semantics(
@@ -1760,11 +1835,10 @@ def test_runtime_resume_reuses_frozen_skill_payloads_for_execution_semantics(
     assert resumed.output == "go\n[skills=demo]\n# Demo\nUse concise bullet points."
     assert _SkillAwareStubGraph.last_request is not None
     assert _SkillAwareStubGraph.last_request.applied_skills == (
-        {
-            "name": "demo",
-            "description": "Demo skill",
-            "content": "# Demo\nUse concise bullet points.",
-        },
+        _expected_demo_skill_payload(
+            skill_dir,
+            content="# Demo\nUse concise bullet points.",
+        ),
     )
 
 
@@ -1901,11 +1975,10 @@ def test_runtime_resume_uses_frozen_applied_skill_payloads_when_live_skill_chang
     assert resumed.session.status == "completed"
     assert _ApprovalThenCaptureSkillGraph.last_request is not None
     assert _ApprovalThenCaptureSkillGraph.last_request.applied_skills == (
-        {
-            "name": "demo",
-            "description": "Demo skill",
-            "content": "# Demo\nOriginal instructions.",
-        },
+        _expected_demo_skill_payload(
+            skill_dir,
+            content="# Demo\nOriginal instructions.",
+        ),
     )
 
 
@@ -2077,11 +2150,11 @@ def test_runtime_resume_reconstructs_legacy_applied_skill_names_from_live_regist
     assert resumed.session.status == "completed"
     assert _ApprovalThenCaptureSkillGraph.last_request is not None
     assert _ApprovalThenCaptureSkillGraph.last_request.applied_skills == (
-        {
-            "name": "demo",
-            "description": "Changed skill",
-            "content": "# Demo\nChanged instructions.",
-        },
+        _expected_demo_skill_payload(
+            skill_dir,
+            description="Changed skill",
+            content="# Demo\nChanged instructions.",
+        ),
     )
 
 
