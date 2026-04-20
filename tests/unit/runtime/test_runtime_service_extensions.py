@@ -380,9 +380,7 @@ def _expected_demo_skill_payload(
         "name": "demo",
         "description": description,
         "content": content,
-        "prompt_context": (
-            f"Skill: demo\nDescription: {description}\nInstructions:\n{content}"
-        ),
+        "prompt_context": (f"Skill: demo\nDescription: {description}\nInstructions:\n{content}"),
         "execution_notes": content,
         "source_path": str((skill_dir / "SKILL.md").resolve()),
     }

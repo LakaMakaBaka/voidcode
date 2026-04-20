@@ -22,9 +22,7 @@ _WHITESPACE_PATTERN = re.compile(r"[ \t]+")
 
 
 def _normalize_text(value: str) -> str:
-    normalized_lines = [
-        _WHITESPACE_PATTERN.sub(" ", line.strip()) for line in value.splitlines()
-    ]
+    normalized_lines = [_WHITESPACE_PATTERN.sub(" ", line.strip()) for line in value.splitlines()]
     return "\n".join(line for line in normalized_lines if line).strip()
 
 
@@ -67,8 +65,7 @@ def build_skill_prompt_context(contexts: Iterable[SkillRuntimeContext]) -> str:
         return ""
     return (
         "Runtime-managed skills are active for this turn. "
-        "Apply these instructions in addition to the user's request.\n\n"
-        + "\n\n".join(rendered)
+        "Apply these instructions in addition to the user's request.\n\n" + "\n\n".join(rendered)
     )
 
 

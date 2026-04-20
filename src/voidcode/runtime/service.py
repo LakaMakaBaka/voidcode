@@ -1853,10 +1853,7 @@ class VoidCodeRuntime:
             available_tools=self._tool_registry.definitions(),
             applied_skills=resumed_applied_skills,
             skill_prompt_context=build_skill_prompt_context(
-                tuple(
-                    runtime_context_from_payload(payload)
-                    for payload in resumed_applied_skills
-                )
+                tuple(runtime_context_from_payload(payload) for payload in resumed_applied_skills)
             ),
             context_window=self._prepare_single_agent_context_window(
                 prompt=prompt,
