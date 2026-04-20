@@ -27,3 +27,4 @@ htmlcov/
 agent/
 .omx/
 .codex
+.voidcode.json
