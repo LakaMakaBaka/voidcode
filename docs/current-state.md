@@ -38,10 +38,10 @@
 - [x] **极简 hooks/config MVP 闭环**：运行时已实现最小 pre/post tool hooks，并补齐了 `session_start` / `session_end` / `session_idle` 与后台任务相关的 lifecycle hook 配置面；同时也已具备 `approval_mode` / `model` / `execution_engine` / `max_steps` 的恢复关键优先级基础、provider fallback 与 step budget 的持久化恢复语义，以及 CLI `config show` 检查路径。
 - [x] **动态工具注册**：运行时现在包括工具的类型化配置和发现基础设施，支持 `BuiltinToolProvider`。
 - [x] **Provider-backed execution engine 路径**：运行时已经具备 provider fallback、context window 管理、approval resume 连续性与可配置 step budget 的运行时治理基础。
-- [ ] **预定义 agent / multi-agent 边界**：`src/voidcode/agent/` 目录已经存在，并作为预定义 agent 的声明边界承载 prompt / hook / skill / MCP / tool / provider 配置；当前仓库尚未实现的仍然是 multi-agent 执行语义本身。
-- [ ] **技能执行**：skill discovery 与 `runtime.skills_loaded` 事件已经完成，但运行时仍未执行技能逻辑，也尚未提供特定于技能的工具上下文。
-- [ ] **ACP 能力面仍未完成**：`acp` 已具备最小 memory transport、connect/handshake、run / approval-resume integration 与 lifecycle event 基线，但当前仍未进入更宽的 agent control-plane 或跨运行时协作语义。
-- [ ] **当前剩余的 runtime / tooling 主线 issue**：GitHub 当前仍打开的主线 issue 主要收敛为 `#152`（parse and apply agent presets in runtime）与 `#153`（execute discovered skills in runtime）；LSP defaults 已基本进入主流项目开箱可用状态，后续 backlog 应继续以 issue 列表为准，而不是沿用更早一批已完成的编号。
+- [x] **预定义 agent 声明边界**：`src/voidcode/agent/` 现在已经具备真实的声明层与多角色 skeleton，并且最小的 leader preset/runtime apply slice 已经进入主路径；当前仍未实现的仍然是 multi-agent 执行语义本身。
+- [~] **技能执行**：skill discovery 与 `runtime.skills_loaded` 事件之外，仓库现在已经落地最小的 runtime skill execution model；但更完整的 skill context 注入、能力绑定与产品化语义仍未完成。
+- [~] **ACP 能力面**：`acp` 已具备 runtime-managed transport / lifecycle、run / approval-resume integration 与事件基线；当前仍未进入更宽的 agent control-plane 或跨运行时协作语义。
+- [~] **当前剩余的 runtime / tooling 主线 gap**：GitHub 当前没有 open issue；最近已经完成 agent preset 最小接入、runtime skill execution 最小模型与 session continuity memory 第一切片。下一轮 backlog 应围绕这些能力的深化与产品化缺口重新建 issue，而不是继续沿用已完成的 `#152` / `#153` 作为“当前剩余主线”。
 - [~] **TUI 客户端**：已具备提示词输入和审批处理的初始实现，但会话管理、恢复/重放与规范冒烟验证仍未收口，当前优先级也已下调。
 - [x] **Web 客户端集成**：已接入真实的会话列表、会话重放、流式运行和审批处理路径，并具备真实 store/client 闭环验证。
 

@@ -253,7 +253,7 @@ VoidCode 当前更应该学习的是：
 
 ## 下一步应产出的设计对象
 
-如果当前阶段决定继续推进 memory，最合理的目标不是实现长期 memory，而是把 **Layer 1 / Layer 2** 设计收敛到可执行的 runtime design。
+如果当前阶段决定继续推进 memory，最合理的目标不是实现长期 memory，而是把 **Layer 1 / Layer 2** 设计收敛到可执行的 runtime design。当前仓库已经落地了 Session Continuity Memory 的第一实现切片，因此下一步重点已经从“是否进入实现”转向“如何深化当前最小 continuity shape 并把后续 gap 重新收敛成 issue”。
 
 更具体地说，下一步设计对象应当是：
 

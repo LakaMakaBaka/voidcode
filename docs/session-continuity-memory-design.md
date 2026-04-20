@@ -2,8 +2,8 @@
 
 ## 状态
 
-- 状态：proposed
-- 范围：design-only
+- 状态：partially implemented
+- 范围：design + initial runtime slice
 - 目标仓库：`voidcode`
 
 ## 目的
@@ -27,12 +27,12 @@
 - provider-backed execution 中的最小 context window compaction
 - `runtime.memory_refreshed` 事件词汇
 
-但今天的“memory”仍然只停留在一个非常早期的状态：
+但今天的“memory”仍然仍处于早期阶段：
 
-- `RuntimeContextWindow` 只会保留最后 N 个 tool results
-- compaction 触发时会发出 `runtime.memory_refreshed`
-- 但 runtime 还不会生成可恢复的 distilled summary
-- 也不会把这种 distilled state 重新注入 provider-backed context
+- `RuntimeContextWindow` 已经具备最小 continuity state 字段，并在 compaction 时生成第一版 runtime-owned continuity summary
+- compaction 触发时会发出带 continuity payload 的 `runtime.memory_refreshed`
+- continuity state 已经进入 `session.metadata["runtime_state"]["continuity"]` 与 provider-backed `context_window`
+- 但 continuity shape 仍然非常克制，仍未扩展成更完整的 distilled summary / reinjection 设计
 
 因此，当前最合理的下一步不是 long-term memory，而是先定义：
 

@@ -115,17 +115,16 @@ VoidCode 仍处于 pre-MVP 开发阶段。路线图从基础工作贯穿至 MVP 
 
 因此，后续 backlog 的判断标准应从“还能再做什么能力”转为“是否直接提高第一次真实改码任务的完成率”。
 
-### 1. 先处理当前仍然打开的 runtime / client parity / tooling issue
+### 1. 先处理当前仍然打开的 runtime / client parity / tooling gap
 
-- `#152`：parse and apply agent presets in runtime
-- `#153`：execute discovered skills in runtime
+最近已经完成了 agent preset 的最小 runtime 接入、runtime-managed skill execution 的最小模型，以及 Session Continuity Memory 第一切片。因此“当前最直接的剩余主线”已经不再是 `#152` / `#153` 这类最小接入问题，而是这些能力的深化与产品化收口：
 
-当前最直接的剩余主线，已经从前一轮的 LSP defaults / lifecycle 稳定性，转向 runtime 对 agent preset 与 skill execution 的真实接入：
+- 更完整的 agent preset/runtime consumption 与验证闭环；
+- 更真实的 skill context / capability binding / execution semantics；
+- continuity memory 在 provider-backed execution 中的后续 shape、reinjection 与验证；
+- CLI + Web 主路径上的 first-task success rate 与默认可用性问题。
 
-- `#152` 负责回答“声明式 agent preset 是否真正进入 runtime 主路径”；
-- `#153` 负责回答“skill discovery 是否只是事件和发现，还是已经变成真实可执行能力”。
-
-如果这两条链路没有完成，仓库虽然已经具备稳定的 CLI + Web 主路径与更好的默认可用性，但 `agent/` 与 `skills/` 仍然停留在边界/发现层，而没有成为真正的运行时能力。
+也就是说，当前 backlog 应围绕“把已落地的最小切片变成稳定可用的主路径能力”来重建，而不是继续把已完成 issue 作为当前下一步。
 
 ### 2. 再继续能力层的完善与加固
 
