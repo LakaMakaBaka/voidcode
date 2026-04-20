@@ -933,13 +933,14 @@ class VoidCodeRuntime:
     ) -> Iterator[RuntimeStreamChunk]:
         active_permission_policy = permission_policy or self._permission_policy
         provider_attempt = cast(int, graph_request.metadata.get("provider_attempt", 0))
+        active_preserved_continuity_state = preserved_continuity_state
         while True:
             context_window = self._prepare_single_agent_context_window(
                 prompt=graph_request.prompt,
                 tool_results=tuple(tool_results),
                 session_metadata=session.metadata,
             )
-            if preserved_continuity_state is not None:
+            if active_preserved_continuity_state is not None:
                 context_window = RuntimeContextWindow(
                     prompt=context_window.prompt,
                     tool_results=context_window.tool_results,
@@ -948,7 +949,7 @@ class VoidCodeRuntime:
                     original_tool_result_count=context_window.original_tool_result_count,
                     retained_tool_result_count=context_window.retained_tool_result_count,
                     max_tool_result_count=context_window.max_tool_result_count,
-                    continuity_state=preserved_continuity_state,
+                    continuity_state=active_preserved_continuity_state,
                 )
             session = self._session_with_context_window_metadata(session, context_window)
             graph_request = GraphRunRequest(
@@ -960,7 +961,7 @@ class VoidCodeRuntime:
                 context_window=context_window,
                 metadata=graph_request.metadata,
             )
-            if context_window.compacted and preserved_continuity_state is None:
+            if context_window.compacted and active_preserved_continuity_state is None:
                 sequence += 1
                 yield RuntimeStreamChunk(
                     kind="event",
@@ -1357,6 +1358,7 @@ class VoidCodeRuntime:
                 raise RuntimeError(post_hook_outcome.failed_error)
 
             tool_results.append(tool_result)
+            active_preserved_continuity_state = None
 
     def _run_tool_hooks(
         self,
@@ -1834,11 +1836,14 @@ class VoidCodeRuntime:
             for event in stored.events:
                 if event.event_type == "runtime.tool_completed":
                     error_value = event.payload.get("error")
+                    raw_content = event.payload.get("content")
                     is_err = error_value is not None
                     tool_results.append(
                         ToolResult(
                             tool_name=str(event.payload.get("tool", "unknown")),
-                            content=str(event.payload.get("content", "")) if not is_err else None,
+                            content=(
+                                str(raw_content) if raw_content is not None and not is_err else None
+                            ),
                             status="error" if is_err else "ok",
                             data=event.payload,
                             error=str(error_value) if is_err else None,

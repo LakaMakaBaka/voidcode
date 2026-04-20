@@ -204,3 +204,40 @@ def test_tool_results_from_events_keeps_success_payloads_with_null_error() -> No
             "error": None,
         }
     ]
+
+
+def test_tool_results_from_events_preserves_successful_null_content() -> None:
+    tool_results_from_events: Any = _private_attr(SqliteSessionStore, "_tool_results_from_events")
+    tool_results = tool_results_from_events(
+        (
+            EventEnvelope(
+                session_id="s1",
+                sequence=1,
+                event_type="runtime.tool_completed",
+                source="runtime",
+                payload={
+                    "tool": "write_file",
+                    "status": "ok",
+                    "content": None,
+                    "error": None,
+                    "path": "beta.txt",
+                },
+            ),
+        )
+    )
+
+    assert tool_results == [
+        {
+            "tool_name": "write_file",
+            "content": None,
+            "status": "ok",
+            "data": {
+                "tool": "write_file",
+                "status": "ok",
+                "content": None,
+                "error": None,
+                "path": "beta.txt",
+            },
+            "error": None,
+        }
+    ]

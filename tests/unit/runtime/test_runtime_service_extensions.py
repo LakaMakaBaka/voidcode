@@ -2343,7 +2343,7 @@ def test_runtime_approval_resume_preserves_canonical_continuity_state(tmp_path: 
             session_id="continuity-approval",
         )
     )
-    expected_continuity = {
+    initial_continuity = {
         "summary_text": (
             "Compacted 1 earlier tool results:\n"
             '1. read_file ok path=sample.txt content_preview="alpha"'
@@ -2355,7 +2355,7 @@ def test_runtime_approval_resume_preserves_canonical_continuity_state(tmp_path: 
 
     assert waiting.session.status == "waiting"
     waiting_runtime_state = cast(dict[str, object], waiting.session.metadata["runtime_state"])
-    assert waiting_runtime_state["continuity"] == expected_continuity
+    assert waiting_runtime_state["continuity"] == initial_continuity
 
     approval_request_id = str(waiting.events[-1].payload["request_id"])
     resumed = runtime.resume(
@@ -2364,17 +2364,31 @@ def test_runtime_approval_resume_preserves_canonical_continuity_state(tmp_path: 
         approval_decision="allow",
     )
 
+    expected_resumed_continuity = {
+        "summary_text": (
+            "Compacted 2 earlier tool results:\n"
+            '1. read_file ok path=sample.txt content_preview="alpha"\n'
+            '2. read_file ok path=sample.txt content_preview="alpha"'
+        ),
+        "dropped_tool_result_count": 2,
+        "retained_tool_result_count": 1,
+        "source": "tool_result_window",
+    }
     resumed_runtime_state = cast(dict[str, object], resumed.session.metadata["runtime_state"])
-    assert resumed_runtime_state["continuity"] == expected_continuity
+    assert resumed_runtime_state["continuity"] == expected_resumed_continuity
     continuity_state = cast(
         RuntimeContinuityState | None,
         created_providers[-1].requests[-1].context_window.continuity_state,
     )
     assert continuity_state is not None
-    assert continuity_state.metadata_payload() == expected_continuity
+    assert continuity_state.metadata_payload() == expected_resumed_continuity
     resumed_event_types = [event.event_type for event in resumed.events]
     assert resumed_event_types.count("runtime.approval_requested") == 1
     assert resumed_event_types.count("runtime.approval_resolved") == 1
+    memory_refreshed_events = [
+        event for event in resumed.events if event.event_type == RUNTIME_MEMORY_REFRESHED
+    ]
+    assert memory_refreshed_events[-1].payload["continuity_state"] == expected_resumed_continuity
     tool_completed_events = [
         event for event in resumed.events if event.event_type == "runtime.tool_completed"
     ]
@@ -3933,6 +3947,91 @@ def test_runtime_resume_fallback_keeps_successful_tool_results_with_null_error(
 
     assert resumed.session.status == "completed"
     assert resumed.output == "done"
+
+
+def test_runtime_resume_fallback_preserves_successful_null_tool_content(
+    tmp_path: Path,
+) -> None:
+    runtime = VoidCodeRuntime(
+        workspace=tmp_path,
+        graph=_MultiStepStubGraph(),
+        config=RuntimeConfig(approval_mode="ask"),
+        permission_policy=PermissionPolicy(mode="ask"),
+    )
+
+    waiting = runtime.run(RuntimeRequest(prompt="go", session_id="checkpoint-null-content-session"))
+    first_approval_request_id = str(waiting.events[-1].payload["request_id"])
+    second_waiting = runtime.resume(
+        session_id="checkpoint-null-content-session",
+        approval_request_id=first_approval_request_id,
+        approval_decision="allow",
+    )
+
+    assert second_waiting.session.status == "waiting"
+    second_approval_request_id = str(second_waiting.events[-1].payload["request_id"])
+    alpha_tool_sequence = next(
+        event.sequence
+        for event in second_waiting.events
+        if event.event_type == "runtime.tool_completed" and event.payload.get("path") == "alpha.txt"
+    )
+
+    database_path = tmp_path / ".voidcode" / "sessions.sqlite3"
+    connection = sqlite3.connect(database_path)
+    try:
+        _ = connection.execute(
+            "UPDATE sessions SET resume_checkpoint_json = NULL WHERE session_id = ?",
+            ("checkpoint-null-content-session",),
+        )
+        _ = connection.execute(
+            (
+                "UPDATE session_events SET payload_json = ? "
+                "WHERE session_id = ? AND event_type = ? AND sequence = ?"
+            ),
+            (
+                json.dumps(
+                    {
+                        "tool": "write_file",
+                        "status": "ok",
+                        "content": None,
+                        "error": None,
+                        "path": "alpha.txt",
+                    },
+                    sort_keys=True,
+                ),
+                "checkpoint-null-content-session",
+                "runtime.tool_completed",
+                alpha_tool_sequence,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    resumed_runtime = VoidCodeRuntime(
+        workspace=tmp_path,
+        graph=_MultiStepStubGraph(),
+        config=RuntimeConfig(approval_mode="ask"),
+        permission_policy=PermissionPolicy(mode="ask"),
+    )
+    resumed = resumed_runtime.resume(
+        session_id="checkpoint-null-content-session",
+        approval_request_id=second_approval_request_id,
+        approval_decision="allow",
+    )
+
+    assert resumed.session.status == "completed"
+    assert resumed.output == "done"
+    alpha_tool_events = [
+        event
+        for event in resumed.events
+        if event.event_type == "runtime.tool_completed" and event.payload.get("path") == "alpha.txt"
+    ]
+    assert alpha_tool_events[-1].payload["content"] is None
+    persisted = resumed_runtime.resume("checkpoint-null-content-session")
+    tool_completed_events = [
+        event for event in persisted.events if event.event_type == "runtime.tool_completed"
+    ]
+    assert tool_completed_events[0].payload["content"] is None
 
 
 def test_runtime_run_repairs_non_dict_runtime_state_metadata_when_acp_enabled(
