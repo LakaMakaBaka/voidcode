@@ -364,7 +364,7 @@ voidcode config show --workspace <path> [--session <id>]
 - hooks 不得改变工具参数或结果，只能观察与失败中止
 - 除 `approval_mode` / `model` / `execution_engine` / `max_steps` 外，其余扩展领域继续保持浅层仓库本地配置
 - 仅 `approval_mode` / `model` / `execution_engine` / `max_steps` 在此轨道中具备恢复关键的优先级行为
-- 当前的请求元数据是灵活的，但尚不属于稳定的公共模式（Schema）
+- 当前的请求元数据是灵活的，但尚不属于稳定的公共模式（Schema）；将其收紧为稳定 runtime request metadata schema 的后续实现工作由 `#175` 跟踪
 
 ## 非目标
 
