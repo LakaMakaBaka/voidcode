@@ -74,6 +74,8 @@ EventEnvelope(
 
 - `runtime.memory_refreshed`
 
+另外，`runtime.background_task_waiting_approval` 当前仍未进入 `src/voidcode/runtime/events.py` 的稳定/原型事件词汇表，也不属于当前稳定事件契约；该 follow-up 由 `#174` 跟踪。客户端应继续把这类后续事件视为 additive 扩展，而不是当前已锁定的 MVP truth。
+
 未来版本可以追加新的事件类型或为现有 payload 增加新字段；客户端必须继续容忍未知事件类型，并将 payload 视为可扩展结构。
 
 ## 当前 execution engine 循环的事件序列

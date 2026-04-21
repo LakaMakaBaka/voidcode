@@ -42,6 +42,8 @@
 - #16 运行时配置界面
 - #17 流传输抽象
 - #163 面向 agent 的工具调用契约与使用说明
+- #174 从 runtime 发出 `runtime.background_task_waiting_approval`
+- #175 在 runtime 中稳定 `RuntimeRequest.metadata` schema
 - #169 runtime enforcement of agent tool allowlists/default tool sets
 - #170 richer runtime lifecycle hook execution
 
