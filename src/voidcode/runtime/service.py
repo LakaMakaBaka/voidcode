@@ -100,6 +100,7 @@ from .events import (
     RUNTIME_MCP_SERVER_STOPPED,
     RUNTIME_MEMORY_REFRESHED,
     RUNTIME_SKILLS_APPLIED,
+    RUNTIME_SKILLS_EXECUTED,
     RUNTIME_SKILLS_LOADED,
     EventEnvelope,
 )
@@ -116,10 +117,15 @@ from .plan import PlanContributor, apply_plan_patch, build_plan_contributor
 from .session import SessionRef, SessionState, SessionStatus, StoredSessionSummary
 from .single_agent_provider import ProviderExecutionError
 from .skills import (
+    PromptAttachmentSkillExecutor,
+    SkillExecutionResult,
+    SkillExecutor,
     SkillRuntimeContext,
     build_runtime_context,
     build_runtime_contexts,
     build_skill_prompt_context,
+    build_skill_runtime_bindings,
+    execute_runtime_contexts,
     runtime_context_from_payload,
 )
 from .storage import SessionEventAppender, SessionStore, SqliteSessionStore
@@ -276,6 +282,7 @@ class VoidCodeRuntime:
     _provider_chain: ResolvedProviderChain
     _provider_auth_resolver: ProviderAuthResolver
     _skill_registry: SkillRegistry
+    _skill_executor: SkillExecutor
     _lsp_manager: LspManager
     _mcp_manager: McpManager
     _acp_adapter: AcpAdapter
@@ -297,6 +304,7 @@ class VoidCodeRuntime:
         session_store: SessionStore | None = None,
         model_provider_registry: ModelProviderRegistry | None = None,
         skill_registry: SkillRegistry | None = None,
+        skill_executor: SkillExecutor | None = None,
         lsp_manager: LspManager | None = None,
         mcp_manager: McpManager | None = None,
         acp_adapter: AcpAdapter | None = None,
@@ -374,6 +382,7 @@ class VoidCodeRuntime:
         )
         self._session_store = session_store or SqliteSessionStore()
         self._skill_registry = skill_registry or self._build_skill_registry()
+        self._skill_executor = skill_executor or PromptAttachmentSkillExecutor()
         self._acp_adapter = acp_adapter or build_acp_adapter(self._config.acp)
         self._plan_contributor = build_plan_contributor(self._workspace, self._config.plan)
         self._background_task_threads = {}
@@ -839,6 +848,7 @@ class VoidCodeRuntime:
         request_metadata = self._fresh_request_metadata(request.metadata)
         self._refresh_mcp_tools()
         tool_registry = self._tool_registry_for_effective_config(effective_config)
+        available_tools = tool_registry.definitions()
         session = SessionState(
             session=SessionRef(id=resolved_session_id, parent_id=request.parent_session_id),
             status="running",
@@ -906,6 +916,14 @@ class VoidCodeRuntime:
         applied_skill_contexts = self._applied_skill_contexts(session.metadata)
         frozen_applied_skills = self._frozen_applied_skill_payloads(applied_skill_contexts)
         skill_prompt_context = build_skill_prompt_context(applied_skill_contexts)
+        skill_execution_results = execute_runtime_contexts(
+            applied_skill_contexts,
+            prompt=request.prompt,
+            session_id=session.session.id,
+            bindings=build_skill_runtime_bindings(available_tools),
+            executor=self._skill_executor,
+        )
+        skill_execution_payloads = self._skill_execution_payloads(skill_execution_results)
         if self._config.skills is not None and self._config.skills.enabled is True:
             session = SessionState(
                 session=session.session,
@@ -915,6 +933,7 @@ class VoidCodeRuntime:
                     **session.metadata,
                     "applied_skills": [skill.name for skill in applied_skill_contexts],
                     "applied_skill_payloads": list(frozen_applied_skills),
+                    "skill_execution_payloads": list(skill_execution_payloads),
                 },
             )
         if applied_skill_contexts:
@@ -935,6 +954,29 @@ class VoidCodeRuntime:
                     },
                 ),
             )
+            sequence += 1
+            yield RuntimeStreamChunk(
+                kind="event",
+                session=session,
+                event=EventEnvelope(
+                    session_id=session.session.id,
+                    sequence=sequence,
+                    event_type=RUNTIME_SKILLS_EXECUTED,
+                    source="runtime",
+                    payload={
+                        "skills": [result.name for result in skill_execution_results],
+                        "count": len(skill_execution_results),
+                        "status": self._skill_execution_status(skill_execution_results),
+                        "capabilities": sorted(
+                            {
+                                capability
+                                for result in skill_execution_results
+                                for capability in result.bindings.capabilities
+                            }
+                        ),
+                    },
+                ),
+            )
 
         planned_prompt, planned_metadata = apply_plan_patch(
             contributor=self._plan_contributor,
@@ -945,7 +987,7 @@ class VoidCodeRuntime:
         graph_request = GraphRunRequest(
             session=session,
             prompt=planned_prompt,
-            available_tools=tool_registry.definitions(),
+            available_tools=available_tools,
             applied_skills=frozen_applied_skills,
             skill_prompt_context=skill_prompt_context,
             context_window=self._prepare_single_agent_context_window(
@@ -2702,7 +2744,18 @@ class VoidCodeRuntime:
         sanitized = dict(metadata)
         sanitized.pop("applied_skills", None)
         sanitized.pop("applied_skill_payloads", None)
+        sanitized.pop("skill_execution_payloads", None)
         return sanitized
+
+    @staticmethod
+    def _skill_execution_payloads(
+        results: Iterable[SkillExecutionResult],
+    ) -> tuple[dict[str, object], ...]:
+        return tuple(result.metadata_payload() for result in results)
+
+    @staticmethod
+    def _skill_execution_status(results: Iterable[SkillExecutionResult]) -> str:
+        return "error" if any(result.status == "error" for result in results) else "ok"
 
     @staticmethod
     def _frozen_applied_skill_payloads(
