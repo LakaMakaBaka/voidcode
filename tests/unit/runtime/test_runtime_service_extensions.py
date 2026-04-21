@@ -1531,9 +1531,10 @@ def test_runtime_default_extension_construction_preserves_public_run_path(
     assert response.events[1].payload == {"skills": ["alpha", "zeta"]}
     assert response.events[2].event_type == "runtime.acp_connected"
     assert response.events[3].event_type == "runtime.skills_applied"
-    assert response.events[4].event_type == "graph.tool_request_created"
-    assert response.events[5].event_type == "runtime.tool_lookup_succeeded"
-    assert response.events[7].event_type == "runtime.tool_completed"
+    assert response.events[4].event_type == "runtime.skills_executed"
+    assert response.events[5].event_type == "graph.tool_request_created"
+    assert response.events[6].event_type == "runtime.tool_lookup_succeeded"
+    assert response.events[8].event_type == "runtime.tool_completed"
     assert response.events[-1].event_type == "runtime.acp_disconnected"
     runtime_state_metadata = cast(dict[str, object], response.session.metadata["runtime_state"])
     assert runtime_state_metadata["acp"] == {
@@ -1995,6 +1996,31 @@ def test_runtime_emits_skills_applied_and_persists_frozen_skill_payloads(tmp_pat
             content="# Demo\nAlways explain your reasoning.",
         )
     ]
+    execution_payloads = response.session.metadata["skill_execution_payloads"]
+    assert isinstance(execution_payloads, list)
+    assert len(execution_payloads) == 1
+    execution_payload = cast(dict[str, object], execution_payloads[0])
+    assert execution_payload["name"] == "demo"
+    assert execution_payload["status"] == "ok"
+    assert execution_payload["prompt_context"] == (
+        "Skill: demo\nDescription: Demo skill\n"
+        "Instructions:\n# Demo\nAlways explain your reasoning."
+    )
+    assert execution_payload["execution_notes"] == "# Demo\nAlways explain your reasoning."
+    assert execution_payload["source_path"] == str((skill_dir / "SKILL.md").resolve())
+    bindings = cast(dict[str, object], execution_payload["bindings"])
+    assert bindings["hook_phases"] == ["pre", "post"]
+    assert bindings["capabilities"] == ["prompt_context"]
+    available_tools = cast(list[str], bindings["available_tools"])
+    assert "read_file" in available_tools
+    assert "write_file" in available_tools
+    assert response.events[3].event_type == "runtime.skills_executed"
+    assert response.events[3].payload == {
+        "skills": ["demo"],
+        "count": 1,
+        "status": "ok",
+        "capabilities": ["prompt_context"],
+    }
     assert _SkillCapturingStubGraph.last_request is not None
     assert _SkillCapturingStubGraph.last_request.applied_skills == (
         _expected_demo_skill_payload(
@@ -2025,6 +2051,7 @@ def test_runtime_persists_explicit_empty_applied_skill_snapshot(tmp_path: Path) 
     ]
     assert response.session.metadata["applied_skills"] == []
     assert response.session.metadata["applied_skill_payloads"] == []
+    assert response.session.metadata["skill_execution_payloads"] == []
     assert _SkillCapturingStubGraph.last_request is not None
     assert _SkillCapturingStubGraph.last_request.applied_skills == ()
 
@@ -2253,6 +2280,7 @@ def test_runtime_skill_enabled_resume_emits_single_approval_resolution(tmp_path:
 
     assert waiting.session.status == "waiting"
     assert sum(event.event_type == "runtime.skills_applied" for event in waiting.events) == 1
+    assert sum(event.event_type == "runtime.skills_executed" for event in waiting.events) == 1
 
     approval_request_id = str(waiting.events[-1].payload["request_id"])
     resumed = runtime.resume(
@@ -2265,6 +2293,7 @@ def test_runtime_skill_enabled_resume_emits_single_approval_resolution(tmp_path:
     assert resumed.output == "done"
     assert sum(event.event_type == "runtime.approval_resolved" for event in resumed.events) == 1
     assert sum(event.event_type == "runtime.skills_applied" for event in resumed.events) == 1
+    assert sum(event.event_type == "runtime.skills_executed" for event in resumed.events) == 1
     assert [event.sequence for event in resumed.events] == sorted(
         event.sequence for event in resumed.events
     )
@@ -2318,6 +2347,11 @@ def test_runtime_resume_uses_frozen_applied_skill_payloads_when_live_skill_chang
             skill_dir,
             content="# Demo\nOriginal instructions.",
         ),
+    )
+    execution_payloads = resumed.session.metadata["skill_execution_payloads"]
+    assert isinstance(execution_payloads, list)
+    assert cast(dict[str, object], execution_payloads[0])["execution_notes"] == (
+        "# Demo\nOriginal instructions."
     )
 
 

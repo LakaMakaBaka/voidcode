@@ -5,9 +5,14 @@ from pathlib import Path
 import pytest
 
 from voidcode.runtime.skills import (
+    PromptAttachmentSkillExecutor,
+    SkillExecutionRequest,
+    SkillRuntimeBindings,
     SkillRuntimeContext,
     build_runtime_contexts,
     build_skill_prompt_context,
+    build_skill_runtime_bindings,
+    execute_runtime_contexts,
 )
 from voidcode.skills import (
     DEFAULT_SKILL_SEARCH_PATHS,
@@ -15,6 +20,7 @@ from voidcode.skills import (
     SkillRegistry,
     parse_skill_frontmatter,
 )
+from voidcode.tools import ToolDefinition
 
 
 def test_parse_skill_frontmatter_returns_required_metadata() -> None:
@@ -138,6 +144,79 @@ def test_skill_runtime_context_builds_execution_prompt_context(tmp_path: Path) -
         "Description: Summarize selected files.\n"
         "Instructions:\n# Summarize\nUse concise bullet points."
     )
+
+
+def test_prompt_attachment_skill_executor_returns_runtime_execution_result(
+    tmp_path: Path,
+) -> None:
+    skill_dir = tmp_path / ".voidcode" / "skills" / "summarize"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: summarize\n"
+        "description: Summarize selected files.\n"
+        "---\n"
+        "# Summarize\n"
+        "Use concise bullet points.\n",
+        encoding="utf-8",
+    )
+    context = build_runtime_contexts(SkillRegistry.discover(workspace=tmp_path))[0]
+    bindings = SkillRuntimeBindings(
+        available_tools=("read_file",),
+        capabilities=("prompt_context",),
+    )
+
+    result = PromptAttachmentSkillExecutor().execute(
+        SkillExecutionRequest(
+            skill=context,
+            prompt="summarize sample.txt",
+            session_id="session-1",
+            bindings=bindings,
+        )
+    )
+
+    assert result.metadata_payload() == {
+        "name": "summarize",
+        "status": "ok",
+        "prompt_context": (
+            "Skill: summarize\n"
+            "Description: Summarize selected files.\n"
+            "Instructions:\n# Summarize\nUse concise bullet points."
+        ),
+        "execution_notes": "# Summarize\nUse concise bullet points.",
+        "bindings": {
+            "available_tools": ["read_file"],
+            "hook_phases": ["pre", "post"],
+            "capabilities": ["prompt_context"],
+        },
+        "source_path": str((skill_dir / "SKILL.md").resolve()),
+    }
+
+
+def test_execute_runtime_contexts_uses_runtime_tool_binding_names(tmp_path: Path) -> None:
+    skill_dir = tmp_path / ".voidcode" / "skills" / "summarize"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: summarize\ndescription: Summarize selected files.\n---\n# Summarize\n",
+        encoding="utf-8",
+    )
+    contexts = build_runtime_contexts(SkillRegistry.discover(workspace=tmp_path))
+    bindings = build_skill_runtime_bindings(
+        (
+            ToolDefinition(name="write_file", description="Write a file", read_only=False),
+            ToolDefinition(name="read_file", description="Read a file"),
+        )
+    )
+
+    results = execute_runtime_contexts(
+        contexts,
+        prompt="summarize sample.txt",
+        session_id="session-1",
+        bindings=bindings,
+        executor=PromptAttachmentSkillExecutor(),
+    )
+
+    assert results[0].bindings.available_tools == ("read_file", "write_file")
 
 
 def test_skill_loader_rejects_workspace_escape_search_paths(tmp_path: Path) -> None:
